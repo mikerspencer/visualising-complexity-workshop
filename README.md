@@ -27,5 +27,6 @@ These were adapted from Ordnance Survey Boundary Line data <https://www.ordnance
 
 ## Code
 
-A sample `R` script is included for joining data together.
+A sample `R` script is in the repo directory for joining data together.
 Please adapt and reuse as required.
+Also included is the `R` script used for rudimentary cleaning.
