@@ -1,0 +1,51 @@
+---
+title: "Variable explorer"
+author: "Mike Spencer"
+date: "5 February 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=T, message=F)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+## Intro
+
+This brief document shows the data for the visualising complexity workshop.
+
+```{r packs}
+library(dplyr)
+library(ggplot2)
+library(rgdal)
+```
+
+## Data
+
+```{r data}
+df = read.csv("../data/prepared/normalised_data.csv")
+
+LAs = readOGR(paste0(normalizePath(".."), "/data/prepared"), "Scot_LAs")
+```
+
+### Variables
+
+```{r variables, fig.width=7}
+df %>% 
+   group_by(year, variable) %>% 
+   summarise(value=round(mean(value), 2)) %>% 
+   ggplot(aes(year, value)) +
+   geom_point() +
+   facet_wrap(~variable, scales="free_y")
+```
+
+### Spatial
+
+```{r spatial}
+par(mar=c(0, 0, 0, 0))
+plot(LAs)
+par(mar=c(5, 4, 4, 2) + 0.1)
+```
