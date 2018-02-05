@@ -14,14 +14,14 @@ library(rgdal)
 # ---------------------------------------
 # Read
 
-f = list.files("../data/raw", pattern="csv", full.names=T)
+f = list.files("../data/raw", pattern="csv")
 dl = lapply(f, function(i){
    print(i)
-   read.csv(i, skip=8)
+   read.csv(paste0("../data/raw/", i), skip=8, stringsAsFactors=F)
 })
 
 # shp file
-LAs = readOGR(paste0(normalizePath("~"), "/repo/vis-complex-workshop/data/"), "Scot_LAs")
+LAs = readOGR(paste0(normalizePath(".."), "/data/prepared"), "Scot_LAs")
 
 
 # ---------------------------------------
@@ -32,30 +32,39 @@ dl = lapply(dl, function(i){
    i[, -1]
 })
 
-pop = pop[pop$Reference.Area %in% elec$Reference.Area, ]
+# Duplicates
+dl = lapply(dl, function(i){
+   i$Reference.Area[i$Reference.Area=="Na h-Eileanan Siar"] = "Eilean Siar"
+   # Use shp file as reference list
+   i = i[i$Reference.Area %in% LAs@data$geo_label, ]
+   # Average duplicates
+   i %>% 
+      group_by(Reference.Area) %>% 
+      summarise_all(mean)
+})
 
-# largest of multiple row
-# extra columns
-# combine Q1:Q4 for employment
+# Combine Q1:Q4 for employment
+dl[[4]] = dl[[4]] %>% 
+   gather(year, value, -Reference.Area) %>% 
+   mutate(year=str_sub(year, 1, 5)) %>% 
+   group_by(Reference.Area, year) %>% 
+   summarise(value=mean(value)) %>% 
+   ungroup() %>% 
+   spread(year, value)
 
-# ---------------------------------------
-# Spatial
+lapply(seq_along(f), function(i){
+   write.csv(dl[[i]], paste0("../data/prepared/", f[i]), row.names=F)
+})
 
-LAs = merge(LAs, pop[, 2:3], by.x="geo_label", by.y="Reference.Area")
 
 # ---------------------------------------
 # Normalise
 
-pop = pop %>% 
-   select(-http...purl.org.linked.data.sdmx.2009.dimension.refArea) %>% 
-   gather(year, population, -Reference.Area) %>% 
-   mutate(year=str_sub(year, 2, 5))
 
-elec = elec %>% 
-   select(-http...purl.org.linked.data.sdmx.2009.dimension.refArea) %>% 
-   gather(year, electricity_use, -Reference.Area) %>% 
-   mutate(year=str_sub(year, 2, 5))
-
+dl = lapply(seq_along[dl], function(i){
+   dl[[i]] %>% 
+      gather(year, n[i])
+})
 
 # ---------------------------------------
 # 
