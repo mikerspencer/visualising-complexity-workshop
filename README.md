@@ -12,7 +12,8 @@ These datasets were taken from <http://statistics.gov.scot>.
 Visit the website for more datasets, but remember to concentrate on data visualisation, not data acquisition and preparation!
 Files are contained in two folders, raw and prepared.
 You can view the cleaning process in the file `repo/VC_clean.R`, some liberties were taken.
-Prepared data are either wide (with each year as a column) or [normalised](https://en.wikipedia.org/wiki/Database_normalization) (e.g. database optimised)
+Prepared data are either wide (with each year as a column) or [normalised](https://en.wikipedia.org/wiki/Database_normalization) (e.g. database optimised).
+Normalised data are in a single file, `normalised_data.csv`, and prepared data are in:
 
 
 * `population-estimates-historical-geographic-boundaries`  <http://statistics.gov.scot/data/population-estimates-historical-geographic-boundaries> Mid-year population estimates. Higher geographies are aggregated from 2001 Data Zones.

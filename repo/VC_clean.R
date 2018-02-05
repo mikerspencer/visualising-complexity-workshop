@@ -60,11 +60,16 @@ lapply(seq_along(f), function(i){
 # ---------------------------------------
 # Normalise
 
+n = c("household-size", "businesses-count", "electricity-consumption", "employment", "population", "road-vehicles")
 
-dl = lapply(seq_along[dl], function(i){
+dl_norm = lapply(seq_along(dl), function(i){
    dl[[i]] %>% 
-      gather(year, n[i])
+      gather_("year", n[i],
+              gather_cols=colnames(dl[[i]])[colnames(dl[[i]])!="Reference.Area"]) %>% 
+      gather(variable, value, -Reference.Area, -year, na.rm=T) %>% 
+      mutate(year=str_sub(year, 2, 5))
 })
 
-# ---------------------------------------
-# 
+dl_norm = do.call("rbind.data.frame", dl_norm)
+
+write.csv(dl_norm, "../data/prepared/normalised_data.csv", row.names=F)
