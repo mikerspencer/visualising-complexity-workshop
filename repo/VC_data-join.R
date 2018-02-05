@@ -26,7 +26,7 @@ dl = lapply(f, function(i){
 df = read.csv("../data/prepared/normalised_data.csv")
 
 # shp file
-LAs = readOGR(paste0(normalizePath("~"), "/repo/vis-complex-workshop/data/"), "Scot_LAs")
+LAs = readOGR(paste0(normalizePath(".."), "/data/prepared"), "Scot_LAs")
 
 
 # ---------------------------------------
