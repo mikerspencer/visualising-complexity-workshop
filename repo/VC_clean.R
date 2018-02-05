@@ -14,14 +14,11 @@ library(rgdal)
 # ---------------------------------------
 # Read
 
-f = list.files("../data", pattern="csv", full.names=T)
-dl = lapply(f[2:5], function(i){
+f = list.files("../data/raw", pattern="csv", full.names=T)
+dl = lapply(f, function(i){
    print(i)
    read.csv(i, skip=8)
 })
-pop = read.csv("../data/population-estimates-historical-geographic-boundaries.csv", skip=8, header=T)
-
-elec = read.csv("~/repo/vis-complex-workshop/data/electricity-consumption.csv", skip=8, header=T)
 
 # shp file
 LAs = readOGR(paste0(normalizePath("~"), "/repo/vis-complex-workshop/data/"), "Scot_LAs")
@@ -29,6 +26,11 @@ LAs = readOGR(paste0(normalizePath("~"), "/repo/vis-complex-workshop/data/"), "S
 
 # ---------------------------------------
 # Clean
+
+# Drop first column
+dl = lapply(dl, function(i){
+   i[, -1]
+})
 
 pop = pop[pop$Reference.Area %in% elec$Reference.Area, ]
 
