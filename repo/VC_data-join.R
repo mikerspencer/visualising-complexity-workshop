@@ -14,25 +14,21 @@ library(rgdal)
 # ---------------------------------------
 # Read
 
-pop = read.csv("~/repo/vis-complex-workshop/data/population-estimates-historical-geographic-boundaries.csv", skip=8, header=T)
+# Single file
+pop = read.csv("../data/prepared/population-estimates-historical-geographic-boundaries.csv", skip=8, header=T)
 
-elec = read.csv("~/repo/vis-complex-workshop/data/electricity-consumption.csv", skip=8, header=T)
+# All files
+f = list.files("../data/prepared", pattern="csv", full.names=T)
+dl = lapply(f, function(i){
+   print(i)
+   read.csv(i, skip=8)
+})
+
 
 # shp file
 LAs = readOGR(paste0(normalizePath("~"), "/repo/vis-complex-workshop/data/"), "Scot_LAs")
 
 
-# ---------------------------------------
-# Clean
-
-pop = pop[pop$Reference.Area %in% elec$Reference.Area, ]
-
-Argyll and Bute 
-1                         1                         1                         2 
-Dumfries and Galloway              East Lothian                      Fife                     Moray 
-2                         2                         2                         2 
-Orkney Islands          Shetland Islands                  Stirling                  Highland 
-2                         2                         2                         4
 
 # ---------------------------------------
 # Spatial
