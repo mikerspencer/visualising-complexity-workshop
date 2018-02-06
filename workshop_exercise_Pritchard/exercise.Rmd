@@ -1,0 +1,277 @@
+---
+title: "Workshop Exercise"
+author: "Leighton Pritchard"
+date: "06/02/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+library(readr)
+library(rgdal)
+library(rgeos)
+library(tidyr)
+
+rawdatafile = "../data/prepared/normalised_data.csv"
+mapdatadir = "../data/prepared"
+mapdatastem = "Scot_LAs"
+```
+
+# Introduction
+
+Our goal is to generate a visualisation of the relationships between employment in each region, and total fuel consumption in that region (as a proxy for vehicle usage). We'll do this using Shiny to enable interactive data exploration, but before that we'll want to look at the the data to see what kinds of relationships we might want to allow the user to show in the final visualisation.
+
+# Load and prepare data
+
+We load in the prepared data in long form:
+
+```{r load_data}
+# We're using readr, rather than base R to read in the raw data
+rawdata = read_csv(rawdatafile)
+
+# We can make fancy tables in R Markdown with kable/kableExtra
+kable(head(rawdata), format="html") %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+```
+
+There's more data than we need, and much of it isn't relevant to us. We filter the data to those years for which we have vehicle, population and employment data (these are the years 2005-2011), and reduce to these variables only:
+
+```{r filter_data}
+filtered_long = rawdata %>%
+  filter(year > 2004) %>%
+  filter(year < 2012) %>% 
+  filter(variable %in% c("employment", "population", "road-vehicles"))
+
+kable(head(filtered_long), format="html") %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F) 
+```
+
+To use this data with `ggplot2`, we need to spread the data out from long to wide form (so we can use columns from the resulting dataframe), and rename `road-vehicles` to `rv` because minus signs/hyphens are bad in column names when using the Tidyverse (they're interpreted as the 'subtract' operator). We also add columns for employment rate ($\frac{employment}{population}$), and fuel consumption per person ($\frac{rv}{population}$):
+
+```{r spread_data}
+# Spread data from long to wide with dplyr
+filtered_wide = spread(filtered_long, variable, value)
+
+# Rename columns and add new columns
+names(filtered_wide) = c("Reference.Area", "year", "employment", "population", "rv")
+filtered_wide = filtered_wide %>%
+  mutate(employment_rate = employment/population) %>%
+  mutate(rv_per_head = rv/population)
+
+kable(head(filtered_wide), format="html") %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+```
+
+To colour our map visualisations, we will need a single value per region. We calculate these and combine them in a single table with four new columns representing Pearson correlations between two variables:
+
+* `emp_rv`: employment and fuel consumption
+* `emprate_rvph`: employment rate and fuel consumption
+* `emp_rv`: employment and fuel consumption per head
+* `emprate_rvph`: employment rate and fuel consumption per head
+
+```{r correlate}
+# Create initial table of employment vs rv only
+corr_data = filtered_wide %>%
+  group_by(Reference.Area) %>%
+  summarise(emp_rv = cor(employment, rv))
+
+# Merge original table with three more correlations
+corr_data = merge(corr_data, filtered_wide
+                  %>% group_by(Reference.Area)
+                  %>% summarise(emprate_rv = cor(employment_rate, rv)))
+corr_data = merge(corr_data, filtered_wide
+                  %>% group_by(Reference.Area)
+                  %>% summarise(emp_rvph = cor(employment, rv_per_head)))
+corr_data = merge(corr_data, filtered_wide
+                  %>% group_by(Reference.Area)
+                  %>% summarise(emprate_rvph = cor(employment_rate, rv_per_head)))
+
+kable(head(corr_data), format="html") %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+```
+
+## Load map data
+
+We load the local authority (LA) boundary data. The original dataset has over 700,000 datapoints defining the boundaries for LAs. Using `gSimplify()` we reduce this to about 14,000 datapoints, which makes rendering the map much faster, which will be useful in Shiny.
+
+The map is plotted with each region labelled in the legend.
+
+```{r load_mapdata}
+# Load shapefile data for Scotland map
+shapefile = readOGR(mapdatadir, mapdatastem)
+
+# The full map has over 700k datapoints - simplify to ≈60k
+simpleshape = gSimplify(shapefile, tol=500, topologyPreserve=TRUE)
+
+# Next the shapefile has to be converted to a dataframe for use in ggplot2
+# It's merged with the correlation data so we can plot this readily
+shapefile_df = fortify(simpleshape)
+shapefile_df$names = levels(shapefile@data$geo_label)[as.numeric(shapefile_df$id)+1]
+shapefile_df = merge(shapefile_df, corr_data, by.x="names", by.y="Reference.Area")
+
+# Plot the map
+map = ggplot(data=shapefile_df, aes(long, lat, group=group, fill=names)) +
+  coord_fixed() + geom_polygon(color='white', size=0.1)
+map
+```
+
+
+# Overview Graphics of Data
+
+We first look at how fuel consumption varies with total employment (total), as a scatterplot with all the datapoints.
+   
+```{r emp_overview}
+# Create base 'data' layer
+p1 = ggplot(filtered_wide, aes(employment, rv))
+
+# Add visualisation layer
+p1 + geom_point(aes(color=Reference.Area)) +
+  ggtitle("Fuel consumption vs Employment")
+```
+
+Within a single region, the relationship is better viewed as a small multiples plot, using `facet_wrap()`, and showing a fitted linear trendline (`ggplot2`'s `geom_smooth()` with the `lm` model) to illustrate the correlation (or lack thereof):
+
+```{r emp_facets, fig.height=10}
+# Note that we turn off the legend for this plot
+p1 + geom_point(aes(color=Reference.Area)) +
+  facet_wrap(~Reference.Area, scales="free", ncol=3) +
+  theme(legend.position="none") +
+  geom_smooth(method="lm", alpha=0.4) +
+  ggtitle("Fuel consumption vs Employment")
+```
+
+Note that the linear fits here tend to be flat and/or have considerable uncertainty in the fitted slope.
+
+We repeat this process for the other three correlations:
+
+```{r emprate_overview}
+p2 = ggplot(filtered_wide, aes(employment_rate, rv))
+p2 + geom_point(aes(color=Reference.Area)) +
+  ggtitle("Fuel consumption vs Employment rate")
+```
+
+```{r emprate_facets, fig.height=10}
+p2 + geom_point(aes(color=Reference.Area)) +
+  facet_wrap(~Reference.Area, scales="free", ncol=3) +
+  theme(legend.position="none") +
+  geom_smooth(method="lm", alpha=0.4) +
+  ggtitle("Fuel consumption vs Employment rate")
+```
+
+In this plot, the linear trendlines tend to show a definite trend with less visual indication of uncertainty.
+
+```{r emp_rvph_overview}
+p3 = ggplot(filtered_wide, aes(employment, rv_per_head))
+p3 + geom_point(aes(color=Reference.Area)) +
+  ggtitle("Fuel consumption per head vs Employment")
+```
+
+```{r emp_rvph_facets, fig.height=10}
+p3 + geom_point(aes(color=Reference.Area)) +
+  facet_wrap(~Reference.Area, scales="free", ncol=3) +
+  theme(legend.position="none") +
+  geom_smooth(method="lm", alpha=0.4) +
+  ggtitle("Fuel consumption per head vs Employment")
+```
+
+Here, the trendlines notably don't tend to agree with the earlier plots, though there is considerable uncertainty in the fitted lines.
+
+```{r emprate_rvph_overview}
+p4 = ggplot(filtered_wide, aes(employment_rate, rv_per_head))
+p4 + geom_point(aes(color=Reference.Area)) +
+  ggtitle("Fuel consumption per head vs Employment rate")
+```
+
+```{r emprate_rvph_facets, fig.height=10}
+p4 + geom_point(aes(color=Reference.Area)) +
+  facet_wrap(~Reference.Area, scales="free", ncol=3) +
+  theme(legend.position="none") +
+  geom_smooth(method="lm", alpha=0.4) +
+  ggtitle("Fuel consumption per head vs Employment rate")
+```
+
+In this final set of plots, the trendlines are again in agreement with the earlier plots, and the uncertainty is reduced.
+
+## Choosing a representation
+
+In the Shiny app, we'd like to have a scatterplot showing the trend in relationship for a single region. We could have a radio button allowing us to choose the relationship, but we might otherwise choose a single correlation from the selection above. The data normalised by population size (for both employment rate and fuel consumption) seems like a reasonable choice.
+
+# Plotting correlation data on the map
+
+We can generate maps showing each of the correlations as the fill colour for each region. As correlation may be positive or negative, we would like a diverging colour scheme, where divergence is 'centred' at zero. We specify this with the `scale_fill_distiller()` layer, and specifying `type="div"`. To force the scale to centre at zero, we set the limits manually to be symmetric about zero.
+
+```{r correlation_map_1}
+map = ggplot(data=shapefile_df, aes(long, lat, group=group, fill=emp_rv)) +
+  coord_fixed() +
+  geom_polygon(color='white', size=0.1) +
+  ggtitle("correlation(employment, fuel consumption)") +
+  scale_fill_distiller(type="div", limits=c(-1, 1))
+map
+```
+
+The plot above shows regions where the employment rate is correlated positively with fuel consumption as brown, and regions with a negative correlation as green. The more saturated a colour is, the larger the magnitude of the correlation. Most regions show a positive correlation between employment and fuel consumption. The notable exceptions are the cities, and the Western Isles.
+
+We draw similar plots for the other three correlations:
+
+```{r correlation_map_2}
+map = ggplot(data=shapefile_df, aes(long, lat, group=group, fill=emprate_rv)) +
+  coord_fixed() +
+  geom_polygon(color='white', size=0.1) +
+  ggtitle("correlation(employment rate, fuel consumption)") +
+  scale_fill_distiller(type="div", limits=c(-1, 1))
+map
+```
+
+When normalising employment by regional population, nearly all of the regions (except the Wester Isles and Orkney) show a positive correlation.
+
+```{r correlation_map_3}
+map = ggplot(data=shapefile_df, aes(long, lat, group=group, fill=emp_rvph)) +
+  coord_fixed() +
+  geom_polygon(color='white', size=0.1) +
+  ggtitle("correlation(employment, fuel consumption per head)") +
+  scale_fill_distiller(type="div", limits=c(-1, 1))
+map
+```
+
+The employment versus fuel consumption per head map is quite different. The positive correlations appear weaker, and the Aberdeenshire/Perth and Kinross regions are notable negatively correlated.
+
+```{r correlation_map_4}
+map = ggplot(data=shapefile_df, aes(long, lat, group=group, fill=emprate_rvph)) +
+  coord_fixed() +
+  geom_polygon(color='white', size=0.1) +
+  ggtitle("correlation(employment rate, fuel consumption per head)") +
+  scale_fill_distiller(type="div", limits=c(-1, 1))
+map
+```
+
+The final map in this sequence, with both employment and fuel consumption normalised for population size, shows an almost universal positive correlation across Scottish regions, excepting the Western Isles, Stirling, and Glasgow.
+
+# Adding a single year's data to the map
+
+In Shiny we'd like to have a slider to choose a year from the data, and be able to draw a single piece of data from that year on the map. We trial this presentation below.
+
+In order to use a string variable as a name in `ggplot()`, we use `aes_string()` rather than `aes()`.
+
+```{r rate_by_year}
+# Choose a year and variable
+year = 2010
+varname = "rv_per_head"
+
+# Select the data from the year
+data = filtered_wide %>% filter(year==year)
+
+# Merge the data for the chosen year with the map shapefile
+filtered_shapes = merge(shapefile_df, data, by.x="names", by.y="Reference.Area")
+
+# Draw the map
+map = ggplot(data=filtered_shapes, aes_string("long", "lat", group="group", fill=varname)) +
+  coord_fixed() +
+  geom_polygon(color='white', size=0.1) +
+  ggtitle(paste(varname, " for ", year))
+map
+```
